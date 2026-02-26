@@ -1,0 +1,291 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "STOP Configuration",
+    "description": "Schema for STOP (Service and Topology Observability Protocol) configuration",
+    "type": "object",
+    "required": [
+        "stop_version",
+        "environment",
+        "entry_points"
+    ],
+    "properties": {
+        "stop_version": {
+            "type": "string",
+            "description": "Protocol version",
+            "const": "1.0"
+        },
+        "environment": {
+            "type": "object",
+            "description": "Environment configuration",
+            "required": [
+                "name",
+                "type",
+                "region",
+                "provider"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Environment identifier"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "production",
+                        "staging",
+                        "dev",
+                        "test"
+                    ],
+                    "description": "Environment type"
+                },
+                "region": {
+                    "type": "string",
+                    "description": "Primary region or zone"
+                },
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "aws",
+                        "gcp",
+                        "azure",
+                        "on-prem",
+                        "hybrid"
+                    ],
+                    "description": "Cloud or infrastructure provider"
+                },
+                "account_id": {
+                    "type": "string",
+                    "description": "Cloud account or project ID"
+                },
+                "tags": {
+                    "type": "object",
+                    "description": "Arbitrary metadata tags",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "entry_points": {
+            "type": "array",
+            "description": "Entry points for discovery (minimum 1 required)",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "type",
+                    "id"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "aws_account",
+                            "gcp_project",
+                            "k8s_cluster",
+                            "vpc",
+                            "namespace"
+                        ],
+                        "description": "Entry point type"
+                    },
+                    "id": {
+                        "type": "string",
+                        "description": "Entry point identifier"
+                    },
+                    "region": {
+                        "type": "string",
+                        "description": "Region override (overrides environment region)"
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Human-readable label"
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        "hints": {
+            "type": "object",
+            "description": "Discovery hints to guide agent behavior",
+            "properties": {
+                "known_services": {
+                    "type": "array",
+                    "description": "Known service names",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tech_stack": {
+                    "type": "array",
+                    "description": "Technology stack components (e.g., java, kafka, postgres)",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "criticality": {
+                    "type": "string",
+                    "enum": [
+                        "tier1",
+                        "tier2",
+                        "tier3"
+                    ],
+                    "description": "Service criticality tier (drives alert urgency defaults)"
+                },
+                "compliance": {
+                    "type": "array",
+                    "description": "Compliance requirements (e.g., PCI-DSS, SOC2)",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exclude_namespaces": {
+                    "type": "array",
+                    "description": "Namespaces or resources to skip during discovery",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "observability": {
+            "type": "object",
+            "description": "Agent behavior configuration for observability",
+            "properties": {
+                "preferred_tools": {
+                    "type": "array",
+                    "description": "Preferred observability tools",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "cloudwatch",
+                            "datadog",
+                            "prometheus"
+                        ]
+                    }
+                },
+                "alert_channels": {
+                    "type": "array",
+                    "description": "Alert escalation targets",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "type",
+                            "target"
+                        ],
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "email",
+                                    "pagerduty",
+                                    "slack",
+                                    "sns"
+                                ],
+                                "description": "Alert channel type"
+                            },
+                            "target": {
+                                "type": "string",
+                                "description": "Alert target (email address, webhook URL, etc.)"
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": [
+                                    "critical",
+                                    "warning",
+                                    "info"
+                                ],
+                                "description": "Minimum severity level for this channel"
+                            }
+                        },
+                        "additionalProperties": false
+                    }
+                },
+                "escalation_contact": {
+                    "type": "object",
+                    "description": "Human-in-the-loop escalation contact",
+                    "required": [
+                        "type",
+                        "target"
+                    ],
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "email",
+                                "slack",
+                                "pagerduty"
+                            ],
+                            "description": "Contact method type"
+                        },
+                        "target": {
+                            "type": "string",
+                            "description": "Contact target"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Contact name"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "slo_defaults": {
+                    "type": "object",
+                    "description": "Default SLO seed values",
+                    "properties": {
+                        "availability_target": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100,
+                            "description": "Availability target percentage"
+                        },
+                        "latency_p99_ms": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "P99 latency target in milliseconds"
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "agent_config": {
+            "type": "object",
+            "description": "Agent operating parameters",
+            "properties": {
+                "discovery_depth": {
+                    "type": "string",
+                    "enum": [
+                        "shallow",
+                        "standard",
+                        "deep"
+                    ],
+                    "description": "Discovery depth level"
+                },
+                "autonomy_level": {
+                    "type": "string",
+                    "enum": [
+                        "supervised",
+                        "standard",
+                        "full"
+                    ],
+                    "description": "Agent autonomy level"
+                },
+                "max_resources_scanned": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum number of resources to scan"
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, plan only without creating resources",
+                    "default": false
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": false
+}
