@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Bedrock Knowledge Base (S3 vector store) + SNS alarms topic for the Observability Agent
+
+Parameters:
+  EmbeddingModel:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+
+Resources:
+
+  # ── SNS Topic ────────────────────────────────────────────────────────────
+  AlarmsNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: alarms_notification
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+  # ── S3 bucket for KB source documents (best-practices content) ───────────
+  KnowledgeBaseBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloud-discovery-agent-kb-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+  # ── S3 Vector Bucket (stores embeddings) ─────────────────────────────────
+  VectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    Properties:
+      VectorBucketName: !Sub "cloud-discovery-agent-vectors-${AWS::AccountId}"
+
+  # ── IAM role for the Knowledge Base ─────────────────────────────────────
+  KnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CloudDiscoveryKnowledgeBaseRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: KBPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt KnowledgeBaseBucket.Arn
+                  - !Sub "${KnowledgeBaseBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - s3vectors:*
+                Resource:
+                  - !GetAtt VectorBucket.VectorBucketArn
+                  - !Sub "${VectorBucket.VectorBucketArn}/*"
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${EmbeddingModel}"
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+  # ── S3 Vector Index ───────────────────────────────────────────────────────
+  VectorIndex:
+    Type: AWS::S3Vectors::Index
+    DependsOn: VectorBucket
+    Properties:
+      VectorBucketArn: !GetAtt VectorBucket.VectorBucketArn
+      IndexName: best-practices-index
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+
+  # ── Bedrock Knowledge Base ────────────────────────────────────────────────
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DependsOn: VectorIndex
+    Properties:
+      Name: cloud-discovery-best-practices
+      Description: AWS best practices for observability coverage recommendations
+      RoleArn: !GetAtt KnowledgeBaseRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${EmbeddingModel}"
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          IndexArn: !GetAtt VectorIndex.IndexArn
+      Tags:
+        ManagedBy: cloud-discovery-agent
+
+  # ── Data Source (S3) — managed outside CFN (recreated manually) ──────────
+  # KnowledgeBaseDataSource is managed via CLI due to immutable chunking config.
+  # Data source ID: <YOUR_DS_ID>
+
+  # ── Sentinel Agent Workarea (shared session bucket) ─────────────────────
+  WorkareaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "sentinel-agent-workarea-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldSessions
+            Status: Enabled
+            ExpirationInDays: 90
+            Prefix: sessions/
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+  # ── Monitoring Agent Results Bucket ─────────────────────────────────────
+  MonitoringResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "monitoring-agent-results-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+Outputs:
+  WorkareaBucketArn:
+    Description: Set as WORKAREA_BUCKET_ARN in config.properties
+    Value: !GetAtt WorkareaBucket.Arn
+
+  MonitoringResultsBucketArn:
+    Description: Set as MONITORING_RESULTS_BUCKET_ARN in config.properties
+    Value: !GetAtt MonitoringResultsBucket.Arn
+
+  KnowledgeBaseId:
+    Description: Set as KNOWLEDGE_BASE_ID in config.properties
+    Value: !Ref KnowledgeBase
+
+  KnowledgeBaseDataSourceId:
+    Description: Data source managed via CLI — ID <YOUR_DS_ID>
+    Value: <YOUR_DS_ID>
+
+  KnowledgeBaseBucketName:
+    Description: Upload best-practices documents here then trigger ingestion
+    Value: !Ref KnowledgeBaseBucket
+
+  AlarmsNotificationTopicArn:
+    Description: Set as ALARMS_NOTIFICATION_TOPIC_ARN in config.properties
+    Value: !Ref AlarmsNotificationTopic

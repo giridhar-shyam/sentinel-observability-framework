@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: IAM roles and S3 results bucket for the Cloud Discovery Agent
+
+Parameters:
+  EnvironmentType:
+    Type: String
+    AllowedValues: [production, staging, dev, test]
+    Default: dev
+
+  DiscoveryRegion:
+    Type: String
+    Default: us-east-1
+    Description: Region to restrict API calls to when EnvironmentType is production.
+
+Conditions:
+  IsProduction: !Equals [!Ref EnvironmentType, production]
+
+Resources:
+
+  # ── AgentCore Execution Role ─────────────────────────────────────────────
+  AgentCoreExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CloudDiscoveryAgentCoreRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+      Policies:
+        - PolicyName: AssumeDiscoveryRole
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !GetAtt DiscoveryRole.Arn
+        - PolicyName: ECRPull
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+        - PolicyName: WriteDiscoveryResults
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::cloud-discovery-agent-results-${AWS::AccountId}/*"
+                  - !Sub "arn:aws:s3:::monitoring-agent-results-${AWS::AccountId}/*"
+                  - !Sub "arn:aws:s3:::sentinel-agent-workarea-${AWS::AccountId}/*"
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+  # ── IAM Discovery Role ───────────────────────────────────────────────────
+  DiscoveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CloudDiscoveryAgentRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+      Policies:
+        - PolicyName: ResourceExplorerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - resource-explorer-2:Search
+                  - resource-explorer-2:GetView
+                  - resource-explorer-2:ListIndexes
+                Resource: "*"
+                Condition: !If
+                  - IsProduction
+                  - StringEquals:
+                      aws:RequestedRegion: [!Ref DiscoveryRegion]
+                  - !Ref AWS::NoValue
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+        - Key: EnvironmentType
+          Value: !Ref EnvironmentType
+
+  # Allow AgentCore execution role to assume the discovery role
+  DiscoveryRoleTrustUpdate:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: AllowAgentCoreToAssumeDiscoveryRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !GetAtt DiscoveryRole.Arn
+      Roles:
+        - !Ref AgentCoreExecutionRole
+
+  # ── Results Bucket ───────────────────────────────────────────────────────
+  ResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloud-discovery-agent-results-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: ManagedBy
+          Value: cloud-discovery-agent
+
+Outputs:
+  AgentCoreExecutionRoleArn:
+    Description: Set as execution_role in .bedrock_agentcore.yaml
+    Value: !GetAtt AgentCoreExecutionRole.Arn
+
+  DiscoveryRoleArn:
+    Description: Set as DISCOVERY_ROLE_ARN in config.properties
+    Value: !GetAtt DiscoveryRole.Arn
+
+  ResultsBucketArn:
+    Description: Set as RESULTS_BUCKET_ARN in config.properties
+    Value: !GetAtt ResultsBucket.Arn

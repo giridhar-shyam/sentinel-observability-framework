@@ -1,0 +1,27 @@
+{
+  "stop_version": "1.0",
+  "environment": {
+    "name": "my-env",
+    "provider": "aws",
+    "type": "dev",
+    "regions": ["us-east-1"]
+  },
+  "entry_points": [
+    {
+      "type": "account",
+      "id": "YOUR_ACCOUNT_ID",
+      "region": "us-east-1"
+    }
+  ],
+  "hints": {
+    "known_services": ["ec2", "s3"],
+    "exclude_namespaces": [],
+    "tech_stack": []
+  },
+  "agent_config": {
+    "discovery_depth": "shallow",
+    "autonomy_level": "standard",
+    "max_resources_scanned": 50,
+    "dry_run": false
+  }
+}

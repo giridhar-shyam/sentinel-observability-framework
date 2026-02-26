@@ -1,0 +1,11 @@
+{
+  "alarm_name": "BedrockProxyAPI-ProxyApiHandler-86y1OsT7SrPz-Errors",
+  "state": "ALARM",
+  "reason": "Threshold Crossed: 3 datapoints [5.0, 9.0, 15.0] were greater than the threshold (1.0). The most recent datapoints: [15.0, 9.0, 5.0].",
+  "metric_name": "Errors",
+  "namespace": "AWS/Lambda",
+  "dimensions": {
+    "FunctionName": "BedrockProxyAPI-ProxyApiHandler-86y1OsT7SrPz"
+  },
+  "session_id": "<YOUR_SESSION_ID>"
+}
